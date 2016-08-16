@@ -27,13 +27,14 @@
 # SOFTWARE.
 
 PRGNAM=google-go-lang
-VERSION=${VERSION:-1.6.3}
-BUILD=${BUILD:-2}
+VERSION=${VERSION:-1.7}
+BUILD=${BUILD:-1}
 TAG=${TAG:-_SBo}
 
 RELEASE=${RELEASE:-linux}
 
 RUN_TEST=${RUN_TEST:-false}
+BOOTSTRAP_VERSION=${BOOTSTRAP_VERSION:-1.4.3}
 
 if [ -z "$ARCH" ]; then
   case "$( uname -m )" in
@@ -45,17 +46,12 @@ fi
 
 if [ "$ARCH" = "i486" ]; then
   LIBDIRSUFFIX=""
-  GOARCH="386"
 elif [ "$ARCH" = "x86_64" ]; then
   LIBDIRSUFFIX="64"
-  GOARCH="amd64"
 elif [ "$ARCH" = "arm" ]; then
   LIBDIRSUFFIX=""
-  GOARCH="arm"
-  export GOARM="6" # can be '5' as well, to use soft float instead of hardware
 else
   LIBDIRSUFFIX=""
-  GOARCH=386
 fi
 
 CWD=$(pwd)
@@ -65,8 +61,24 @@ OUTPUT=${OUTPUT:-/tmp}
 
 set -e
 
-rm -rf $PKG
+rm -rf $PKG $TMP/go
 mkdir -p $TMP $PKG/usr/lib${LIBDIRSUFFIX}/go${VERSION} $OUTPUT
+
+unset GOBIN GOPATH GOOS GOARCH
+
+# go1.5+ need to be bootstrapped by go1.4.x
+# so lets build that bootstrap compiler first
+cd $TMP
+tar xf $CWD/go${BOOTSTRAP_VERSION}.src.tar.gz
+export GOROOT=$TMP/go
+export CC=/usr/bin/clang # because silly DWARF symbols error in gcc 5.4
+cd $GOROOT/src
+LC_ALL=C \
+	./make.bash
+
+# then do the hand off
+export GOROOT_BOOTSTRAP=$GOROOT
+
 cd $PKG/usr/lib${LIBDIRSUFFIX}/go${VERSION}
 tar xvf $CWD/go${VERSION}.src.tar.gz
 cd go
@@ -79,10 +91,8 @@ find -L . \
 
 # as of >= go1.5, the cross-compiler does not need to be bootstrap, so the
 # compiler need only be compiled for the host OS, which it detects
-unset GOBIN GOPATH GOOS GOARCH
 unset BASH_ENV # Not sure why, but this causes run.bash to fail --rworkman
 
-export GOROOT_BOOTSTRAP="/usr" # gcc 5+ is go1.4 API, so we'll bootstrap with it
 export GOROOT="$(pwd)"
 export GOROOT_FINAL="/usr/lib${LIBDIRSUFFIX}/go${VERSION}/go"
 
