@@ -123,7 +123,7 @@ cp -a $PKG/$VALADIR/webkit2gtk-4.1.deps $PKG/$VALADIR/webkit2gtk-web-extension-4
 cp -a $CWD/webkit2gtk-4.1.vapi $PKG/$VALADIR/webkit2gtk-4.1.vapi
 cp -a $CWD/webkit2gtk-web-extension-4.1.vapi $PKG/$VALADIR/webkit2gtk-web-extension-4.1.vapi
 cp -a $CWD/javascriptcoregtk-4.1.vapi $PKG/$VALADIR/javascriptcoregtk-4.1.vapi
-chmod 644 $PKG/$VALADIR/webkit2gtk-4.1.vapi $PKG/$VALADIR/webkit2gtk-web-extension-4.1.vapi $PKG/$VALLADIR/javascriptcoregtk-4.1.vapi
+chmod 644 $PKG/$VALADIR/webkit2gtk-4.1.vapi $PKG/$VALADIR/webkit2gtk-web-extension-4.1.vapi $PKG/$VALADIR/javascriptcoregtk-4.1.vapi
 
 mkdir -p $PKG/usr/doc/$PRGNAM-$VERSION
 cp -a ../NEWS $PKG/usr/doc/$PRGNAM-$VERSION
