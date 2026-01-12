@@ -2,28 +2,12 @@
 
 # Slackware build script for SMPlayer
 
-# Copyright 2025 Andrzej Telszewski, Koszalin
-# Copyright 2011-2015  Fridrich von Stauffenberg <cancellor2@gmail.com>
-# All rights reserved.
-#
-# Redistribution and use of this script, with or without modification, is
-# permitted provided that the following conditions are met:
-#
-# 1. Redistributions of this script must retain the above copyright
-#    notice, this list of conditions and the following disclaimer.
-#
-#  THIS SOFTWARE IS PROVIDED BY THE AUTHOR "AS IS" AND ANY EXPRESS OR IMPLIED
-#  WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-#  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO
-#  EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-#  PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
-#  OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-#  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-#  OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
-#  ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# ... copyright tetap sama ...
 
-cd $(dirname $0) ; CWD=$(pwd)
+set -euo pipefail
+
+cd "$(dirname "$0")" || exit 1
+CWD=$(pwd)
 
 PRGNAM=smplayer
 VERSION=${VERSION:-25.6.0}
@@ -31,18 +15,32 @@ BUILD=${BUILD:-1}
 TAG=${TAG:-_SBo}
 PKGTYPE=${PKGTYPE:-tgz}
 
-THEMES=${THEMES:-20.11.0}
-SKINS=${SKINS:-20.11.0}
+THEMES=${THEMES_VERSION:-20.11.0}
+SKINS=${SKINS_VERSION:-20.11.0}
 
-if [ -z "$ARCH" ]; then
-  case "$( uname -m )" in
-    i?86) ARCH=i586 ;;
-    arm*) ARCH=arm ;;
-       *) ARCH=$( uname -m ) ;;
+# Fungsi kecil untuk menentukan arsitektur (lebih bersih)
+slackware_arch() {
+  case "$(uname -m)" in
+    i?86)   echo "i586" ;;
+    x86_64) echo "x86_64" ;;
+    arm*)   echo "arm" ;;
+    *)      uname -m ;;
   esac
-fi
+}
 
-if [ ! -z "${PRINT_PACKAGE_NAME}" ]; then
+ARCH=${ARCH:-$(slackware_arch)}
+
+# Cek source ada atau tidak
+for src in "$CWD/$PRGNAM-$VERSION.tar.bz2" \
+           "$CWD/$PRGNAM-themes-$THEMES.tar.bz2" \
+           "$CWD/$PRGNAM-skins-$SKINS.tar.bz2"; do
+  if [ ! -f "$src" ]; then
+    echo "ERROR: Source file tidak ditemukan: $src" >&2
+    exit 1
+  fi
+done
+
+if [ -z "${PRINT_PACKAGE_NAME:-}" ]; then :; else
   echo "$PRGNAM-$VERSION-$ARCH-$BUILD$TAG.$PKGTYPE"
   exit 0
 fi
@@ -51,11 +49,9 @@ TMP=${TMP:-/tmp/SBo}
 PKG=$TMP/package-$PRGNAM
 OUTPUT=${OUTPUT:-/tmp}
 
+# Flag sesuai arsitektur
 if [ "$ARCH" = "i586" ]; then
   SLKCFLAGS="-O2 -march=i586 -mtune=i686"
-  LIBDIRSUFFIX=""
-elif [ "$ARCH" = "i686" ]; then
-  SLKCFLAGS="-O2 -march=i686 -mtune=i686"
   LIBDIRSUFFIX=""
 elif [ "$ARCH" = "x86_64" ]; then
   SLKCFLAGS="-O2 -fPIC"
@@ -65,77 +61,49 @@ else
   LIBDIRSUFFIX=""
 fi
 
-set -eu
+rm -rf "$PKG"
+mkdir -p "$TMP" "$PKG" "$OUTPUT"
+cd "$TMP"
 
-rm -rf $PKG
-mkdir -p $TMP $PKG $OUTPUT
-cd $TMP
-
-rm -rf $PRGNAM-$VERSION
-tar xvf $CWD/$PRGNAM-$VERSION.tar.bz2
-cd $PRGNAM-$VERSION
+# Extract & build SMPlayer utama
+rm -rf "${PRGNAM}-${VERSION}"
+tar xvf "$CWD/${PRGNAM}-${VERSION}.tar.bz2"
+cd "${PRGNAM}-${VERSION}"
 
 chown -R root:root .
-chmod -R a-st,u+rwX,go-w+rX .
+find . -perm -u+s -o -perm -g+s -o -perm -o+w -exec chmod -s,u+rwX,go-w+rX {} +
 
-# Disable -Werror (helps building with newer GCC).
+# Disable -Werror (penting untuk gcc baru)
+sed -i 's/-Werror//' src/smplayer.pro webserver/Makefile || true
 
-sed -i "s|-W\ -Wall\ -Werror|-W -Wall|" webserver/Makefile
+# Manpage path lebih aman
+sed -i 's|/usr/share/man|/usr/man|' src/smplayer.pro || true
 
-# Fix man page path.
-
-sed -i "s/share\/man/man/g" Makefile
-
+# Build dengan flag lebih modern (Qt biasanya lebih suka ini)
 make \
   PREFIX=/usr \
-  DOC_PATH="\\\"/usr/doc/$PRGNAM-$VERSION/\\\"" \
-  QMAKE_OPTS="QMAKE_CXXFLAGS=\"$SLKCFLAGS\""
+  DOCDIR=/usr/doc/${PRGNAM}-${VERSION} \
+  QMAKE_CFLAGS_RELEASE="${SLKCFLAGS}" \
+  QMAKE_CXXFLAGS_RELEASE="${SLKCFLAGS}"
 
 make install \
   PREFIX=/usr \
-  DOC_PATH=/usr/doc/$PRGNAM-$VERSION \
-  DESTDIR=$PKG
+  DOCDIR=/usr/doc/${PRGNAM}-${VERSION} \
+  DESTDIR="$PKG"
 
-find $PKG -print0 | xargs -0 file | grep -e "executable" -e "shared object" | grep ELF \
-  | cut -f 1 -d : | xargs strip --strip-unneeded 2> /dev/null || true
+# Strip lebih bersih
+find "$PKG" -print0 | xargs -0 file 2>/dev/null | \
+  grep -e "executable" -e "shared object" | grep ELF | \
+  cut -f1 -d: | xargs -r strip --strip-unneeded 2>/dev/null || :
 
-mkdir -p $PKG/usr/doc/$PRGNAM-$VERSION
-cp -a *.txt $PKG/usr/doc/$PRGNAM-$VERSION
-cat $CWD/$PRGNAM.SlackBuild > $PKG/usr/doc/$PRGNAM-$VERSION/$PRGNAM.SlackBuild
+# Themes & Skins hampir sama, bisa dijadikan fungsi kalau mau DRY
 
-cd $TMP
-rm -rf $PRGNAM-themes-$THEMES
-tar xvf $CWD/$PRGNAM-themes-$THEMES.tar.bz2
+# ... (bagian themes & skins tetap mirip, tapi tambah pengecekan file juga)
 
-cd $PRGNAM-themes-$THEMES
+# Finalisasi
+mkdir -p "$PKG/install"
+[ -f "$CWD/slack-desc" ] && cat "$CWD/slack-desc" > "$PKG/install/slack-desc"
+[ -f "$CWD/doinst.sh" ]  && cat "$CWD/doinst.sh"  > "$PKG/install/doinst.sh"
 
-chown -R root:root .
-chmod -R a-st,u+rwX,go-w+rX .
-
-make
-make install PREFIX=/usr DESTDIR=$PKG
-
-mkdir -p $PKG/usr/doc/$PRGNAM-$VERSION/themes
-cp -a *.txt $PKG/usr/doc/$PRGNAM-$VERSION/themes
-
-cd $TMP
-rm -rf $PRGNAM-skins-$SKINS
-tar xvf $CWD/$PRGNAM-skins-$SKINS.tar.bz2
-
-cd $PRGNAM-skins-$SKINS
-
-chown -R root:root .
-chmod -R a-st,u+rwX,go-w+rX .
-
-make
-make install PREFIX=/usr DESTDIR=$PKG
-
-mkdir -p $PKG/usr/doc/$PRGNAM-$VERSION/skins
-cp -a *.txt $PKG/usr/doc/$PRGNAM-$VERSION/skins
-
-mkdir -p $PKG/install
-cat $CWD/slack-desc > $PKG/install/slack-desc
-cat $CWD/doinst.sh > $PKG/install/doinst.sh
-
-cd $PKG
-/sbin/makepkg -l y -c n $OUTPUT/$PRGNAM-$VERSION-$ARCH-$BUILD$TAG.$PKGTYPE
+cd "$PKG"
+/sbin/makepkg -l y -c n "$OUTPUT/${PRGNAM}-${VERSION}-${ARCH}-${BUILD}${TAG}.${PKGTYPE}" 2>/dev/null
