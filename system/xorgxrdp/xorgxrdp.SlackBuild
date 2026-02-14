@@ -5,7 +5,7 @@
 # Written by David Allen <david.a58@optusnet.com.au>
 
 # Taken over maintainership by Jeremy Hansen in 2025.
-# Copyright 2025 Jeremy Hansen <jebrhansen+SBo@gmail.com>
+# Copyright 2025-2026 Jeremy Hansen <jebrhansen+SBo@gmail.com>
 
 # 20220414 bkw: Modified by SlackBuilds.org, BUILD=2:
 # - add SlackBuild to doc dir.
@@ -13,7 +13,7 @@
 cd $(dirname $0) ; CWD=$(pwd)
 
 PRGNAM=xorgxrdp
-VERSION=${VERSION:-0.10.4}
+VERSION=${VERSION:-0.10.5}
 BUILD=${BUILD:-1}
 TAG=${TAG:-_SBo}
 PKGTYPE=${PKGTYPE:-tgz}
