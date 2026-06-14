@@ -1,10 +1,10 @@
 PRGNAM="wine-staging"
-VERSION="11.0"
+VERSION="11.20"
 HOMEPAGE="https://wiki.winehq.org/Wine-Staging"
-DOWNLOAD="https://dl.winehq.org/wine/source/11.0/wine-11.0.tar.xz \
-          https://github.com/wine-staging/wine-staging/archive/v11.0/wine-staging-11.0.tar.gz"
-MD5SUM="f69dbda081555c439de07c28ab1dcdb5 \
-        7c270f8a28617bafdde8072cee1eada2"
+DOWNLOAD="https://dl.winehq.org/wine/source/11.x/wine-11.20.tar.xz \
+          https://github.com/wine-staging/wine-staging/archive/v11.20/wine-staging-11.20.tar.gz"
+MD5SUM="5a26a04733c4d310743ab20d5e0243d7 \
+        8fe4729b932b841abcf84fe1faff877b"
 DOWNLOAD_x86_64=""
 MD5SUM_x86_64=""
 REQUIRES=""
