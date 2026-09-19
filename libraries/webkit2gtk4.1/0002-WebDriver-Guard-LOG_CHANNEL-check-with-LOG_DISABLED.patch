@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Pawel Lampe <plampe@igalia.com>
+Date: Mon, 17 Aug 2026 00:00:00 +0000
+Subject: [PATCH] [WebDriver] Guard LOG_CHANNEL check with
+ LOG_DISABLED/RELEASE_LOG_DISABLED
+
+WebDriverService::handleRequest() unconditionally checks
+LOG_CHANNEL(WebDriverClassic).state to decide whether it is worth
+building the request/response log strings. However,
+Source/WebDriver/Logging.h only declares the WebDriverClassic (and
+other WebDriver) log channels inside:
+
+    #if !LOG_DISABLED || !RELEASE_LOG_DISABLED
+
+On a release build (NDEBUG, so LOG_DISABLED is true) without journald
+support and without OS_LOG/Android (so RELEASE_LOG_DISABLED is also
+true) - the common configuration for an embedded Linux build without
+the "journald" PACKAGECONFIG - that guard is false, so the channel is
+never declared, and this direct, unguarded use of LOG_CHANNEL() fails
+to compile:
+
+    error: 'LOG_CHANNEL_PREFIXWebDriverClassic' was not declared in this scope
+
+RELEASE_LOG_INFO() itself already collapses to a no-op in that
+configuration (see wtf/Assertions.h), so guard this manual
+LOG_CHANNEL() state check with the same condition used to declare the
+channel in Logging.h.
+
+Upstream-Status: Pending
+Signed-off-by: Pawel Lampe <plampe@igalia.com>
+---
+ Source/WebDriver/WebDriverService.cpp | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/Source/WebDriver/WebDriverService.cpp b/Source/WebDriver/WebDriverService.cpp
+index 07ae385f33f4..2612d239a611 100644
+--- a/Source/WebDriver/WebDriverService.cpp
++++ b/Source/WebDriver/WebDriverService.cpp
+@@ -381,6 +381,7 @@ bool WebDriverService::findCommand(HTTPMethod method, const String& path, Comman
+ void WebDriverService::handleRequest(HTTPRequestHandler::Request&& request, Function<void (HTTPRequestHandler::Response&&)>&& replyHandler)
+ {
+     Function<void (HTTPRequestHandler::Response&&)> actualReplyHandler = WTF::move(replyHandler);
++#if !LOG_DISABLED || !RELEASE_LOG_DISABLED
+     if (LOG_CHANNEL(WebDriverClassic).state != WTFLogChannelState::Off) {
+         RELEASE_LOG_INFO(WebDriverClassic, "HTTP request %s %s (body=%zu bytes)", request.method.utf8().data(), request.path.utf8().data(), request.dataLength);
+         actualReplyHandler = [startTime = MonotonicTime::now(), replyHandler = WTF::move(actualReplyHandler)](HTTPRequestHandler::Response&& response) mutable {
+@@ -388,6 +389,7 @@ void WebDriverService::handleRequest(HTTPRequestHandler::Request&& request, Func
+             replyHandler(WTF::move(response));
+         };
+     }
++#endif
+ 
+     auto method = toCommandHTTPMethod(request.method);
+     if (!method) {
+--
+2.43.0
