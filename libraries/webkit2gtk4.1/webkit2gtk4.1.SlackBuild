@@ -26,7 +26,7 @@ cd $(dirname $0) ; CWD=$(pwd)
 
 PRGNAM=webkit2gtk4.1
 SRCNAM=webkitgtk
-VERSION=${VERSION:-2.52.6}
+VERSION=${VERSION:-2.54.2}
 BUILD=${BUILD:-1}
 TAG=${TAG:-_SBo}
 PKGTYPE=${PKGTYPE:-tgz}
@@ -49,11 +49,9 @@ if [ ! -z "${PRINT_PACKAGE_NAME}" ]; then
   exit 0
 fi
 
-if [ "$ARCH" = "i586" ]; then
+if [ "$ARCH" = "i586" -o "$ARCH" = "i686" ]; then
   LIBDIRSUFFIX=""
-elif [ "$ARCH" = "i686" ]; then
-  LIBDIRSUFFIX=""
-elif [ "$ARCH" = "x86_64" ]; then
+elif [ "$ARCH" = "x86_64" -o "$ARCH" = "aarch64" ]; then
   LIBDIRSUFFIX="64"
 else
   LIBDIRSUFFIX=""
@@ -64,30 +62,36 @@ set -eu
 rm -rf $PKG
 mkdir -p $TMP $PKG $OUTPUT
 cd $TMP
-rm -rf $SRCNAM-$VERSION
-tar xvf $CWD/$SRCNAM-$VERSION.tar.xz
+# If you want to rebuild, comment this line to reduce the build time
+#rm -rf $SRCNAM-$VERSION
+tar xvf $CWD/$SRCNAM-$VERSION.tar.xz --no-same-owner
 cd $SRCNAM-$VERSION
-chown -R root:root .
-find -L . \
- \( -perm 777 -o -perm 775 -o -perm 750 -o -perm 711 -o -perm 555 \
-  -o -perm 511 \) -exec chmod 755 {} \; -o \
- \( -perm 666 -o -perm 664 -o -perm 640 -o -perm 600 -o -perm 444 \
-  -o -perm 440 -o -perm 400 \) -exec chmod 644 {} \;
+find . ! -type l    -a \( \
+  \(     -perm /111 -a ! -perm 755 -a -exec chmod -f 755 {} + \) -o \
+  \(   ! -perm /111 -a ! -perm 644 -a -exec chmod -f 644 {} + \) \)
 
 patch -p1 < $CWD/unhide-deprecated-api.patch
 patch -p1 < $CWD/3d5373575695b293b8559155431d0079a6153aff.patch
-
-#export CC=clang CXX=clang++
-#LDFLAGS+=" -fuse-ld=lld"
+patch -p1 < $CWD/webcodecs-codecs.patch
 
 # JITted code crashes when CET is used
 SLKCFLAGS+=' -fcf-protection=none'
+
+LINKER_FLAGS=""
+if command -v mold >/dev/null 2>&1; then
+  LINKER_FLAGS="-fuse-ld=mold"
+elif command -v ld.lld >/dev/null 2>&1 || command -v lld >/dev/null 2>&1; then
+  LINKER_FLAGS="-fuse-ld=lld"
+fi
 
 mkdir -p build
 cd build
   cmake -DPORT=GTK \
 	-DCMAKE_C_FLAGS:STRING="$SLKCFLAGS" \
 	-DCMAKE_CXX_FLAGS:STRING="$SLKCFLAGS" \
+	-DCMAKE_EXE_LINKER_FLAGS:STRING="$LINKER_FLAGS" \
+	-DCMAKE_SHARED_LINKER_FLAGS:STRING="$LINKER_FLAGS" \
+	-DCMAKE_MODULE_LINKER_FLAGS:STRING="$LINKER_FLAGS" \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_SKIP_RPATH=ON \
 	-DCMAKE_INSTALL_PREFIX=/usr \
@@ -95,20 +99,23 @@ cd build
 	-DLIBEXEC_INSTALL_DIR=/usr/lib${LIBDIRSUFFIX}/webkit2gtk-4.1 \
 	-DENABLE_GAMEPAD=OFF \
 	-DENABLE_MINIBROWSER=ON \
-        -DENABLE_SPEECH_SYNTHESIS=OFF \
+	-DENABLE_SPEECH_SYNTHESIS=OFF \
 	-DENABLE_JOURNALD_LOG=OFF \
 	-DENABLE_DOCUMENTATION=OFF \
 	-DENABLE_BUBBLEWRAP_SANDBOX=off \
 	-DUSE_SYSTEM_MALLOC=on \
-        -DUSE_AVIF=OFF \
-        -DUSE_GTK4=OFF \
-        -DUSE_LIBBACKTRACE=OFF \
-	-DUSE_JPEGXL=OFF \
-        -DUSE_FLITE=OFF \
-        -DUSE_SYSTEM_SYSPROF_CAPTURE=NO \
-        -Wno-dev \
-        -G Ninja \
-        ..
+	-DUSE_AVIF=OFF \
+	-DUSE_GTK4=OFF \
+	-DUSE_LIBBACKTRACE=OFF \
+	-DUSE_JPEGXL=ON \
+	-DUSE_GSTREAMER_MPEGTS=ON \
+	-DUSE_FLITE=OFF \
+	-DUSE_SYSTEM_SYSPROF_CAPTURE=NO \
+	-DUSE_GBM=ON \
+	-DUSE_LIBDRM=ON \
+    -Wno-dev \
+    -G Ninja \
+  ..
 
 # The build might crash on high specs machines because ninja eat all
 # of the resources, so let's try to limit it to half the available ones
@@ -116,10 +123,6 @@ cd build
 # for detailed explanation.
 "${NINJA:=ninja}" -j$(expr '(' $(nproc) + 1 ')' / 2)
 DESTDIR=$PKG $NINJA -j1 install
-
-mkdir -p $PKG/usr/share/gtk-doc/html/webkit{2,dom}gtk-4.1
-cp -rf ../Documentation/* \
-  $PKG/usr/share/gtk-doc/html/webkit2gtk-4.1/
 
 #add vala bindings
 mkdir -p $PKG/$VALADIR
