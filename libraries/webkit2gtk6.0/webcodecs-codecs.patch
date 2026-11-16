@@ -1,0 +1,75 @@
+diff -uprN a/Source/WebCore/Modules/webcodecs/WebCodecsVideoDecoder.cpp b/Source/WebCore/Modules/webcodecs/WebCodecsVideoDecoder.cpp
+--- a/Source/WebCore/Modules/webcodecs/WebCodecsVideoDecoder.cpp	2026-07-24 09:02:54.445859400 +0100
++++ b/Source/WebCore/Modules/webcodecs/WebCodecsVideoDecoder.cpp	2026-11-04 15:11:50.374837305 +0000
+@@ -74,13 +74,13 @@ WebCodecsVideoDecoder::~WebCodecsVideoDe
+ 
+ static bool isSupportedDecoderCodec(const String& codec, const SettingsValues& settings)
+ {
+-    return codec.startsWith("vp8"_s) || codec.startsWith("vp09.00"_s) || codec.startsWith("avc1."_s)
+-#if ENABLE(WEB_RTC)
+-        || (codec.startsWith("vp09.02"_s) && settings.webRTCVP9Profile2CodecEnabled)
+-#endif
++    return codec.startsWith("vp8"_s)
++        || codec.startsWith("vp09."_s)
++        || codec.startsWith("avc1."_s)
++        || codec.startsWith("avc3."_s)
+         || (codec.startsWith("hev1."_s) && settings.webCodecsHEVCEnabled)
+         || (codec.startsWith("hvc1."_s) && settings.webCodecsHEVCEnabled)
+-        || (codec.startsWith("av01.0"_s) && settings.webCodecsAV1Enabled);
++        || (codec.startsWith("av01."_s) && settings.webCodecsAV1Enabled);
+ }
+ 
+ static bool isValidDecoderConfig(const WebCodecsVideoDecoderConfig& config)
+diff -uprN a/Source/WebCore/platform/AudioDecoder.cpp b/Source/WebCore/platform/AudioDecoder.cpp
+--- a/Source/WebCore/platform/AudioDecoder.cpp	2026-07-24 09:02:55.102577000 +0100
++++ b/Source/WebCore/platform/AudioDecoder.cpp	2026-11-04 15:11:50.374616548 +0000
+@@ -47,7 +47,9 @@ bool AudioDecoder::isCodecSupported(cons
+ {
+     bool isMPEG4AAC = codec == "mp4a.40.2"_s || codec == "mp4a.40.02"_s || codec == "mp4a.40.5"_s
+         || codec == "mp4a.40.05"_s || codec == "mp4a.40.29"_s || codec == "mp4a.40.42"_s;
+-    bool isCodecAllowed = isMPEG4AAC || codec == "mp3"_s || codec == "opus"_s
++    bool isDolby = codec == "ac-3"_s || codec == "ec-3"_s || codec == "ac3"_s || codec == "ec3"_s
++        || codec == "mp4a.a5"_s || codec == "mp4a.a6"_s || codec.startsWith("ac-4"_s);
++    bool isCodecAllowed = isMPEG4AAC || isDolby || codec == "mp3"_s || codec == "opus"_s
+         || codec == "alaw"_s || codec == "ulaw"_s || codec == "flac"_s
+         || codec == "vorbis"_s || codec.startsWith("pcm-"_s);
+ 
+diff -uprN a/Source/WebCore/platform/audio/gstreamer/AudioDecoderGStreamer.cpp b/Source/WebCore/platform/audio/gstreamer/AudioDecoderGStreamer.cpp
+--- a/Source/WebCore/platform/audio/gstreamer/AudioDecoderGStreamer.cpp	2026-07-28 16:01:34.505325000 +0100
++++ b/Source/WebCore/platform/audio/gstreamer/AudioDecoderGStreamer.cpp	2026-11-04 15:11:50.374726796 +0000
+@@ -210,6 +210,20 @@ GStreamerInternalAudioDecoder::GStreamer
+         m_inputCaps = adoptGRef(gst_caps_new_simple("audio/x-raw", "format", G_TYPE_STRING, gst_audio_format_to_string(gstPcmFormat),
+             "rate", G_TYPE_INT, config.sampleRate, "channels", G_TYPE_INT, config.numberOfChannels,
+             "layout", G_TYPE_STRING, "interleaved", nullptr));
++    } else if (codecName == "ac-3"_s || codecName == "ac3"_s || codecName == "mp4a.a5"_s || codecName == "mp4a.A5"_s) {
++        m_inputCaps = adoptGRef(gst_caps_new_empty_simple("audio/x-ac3"));
++        if (config.sampleRate)
++            gst_caps_set_simple(m_inputCaps.get(), "rate", G_TYPE_INT, config.sampleRate, nullptr);
++        if (config.numberOfChannels)
++            gst_caps_set_simple(m_inputCaps.get(), "channels", G_TYPE_INT, config.numberOfChannels, nullptr);
++        parser = "ac3parse"_s;
++    } else if (codecName == "ec-3"_s || codecName == "ec3"_s || codecName == "eac3"_s || codecName == "mp4a.a6"_s || codecName == "mp4a.A6"_s) {
++        m_inputCaps = adoptGRef(gst_caps_new_empty_simple("audio/x-eac3"));
++        if (config.sampleRate)
++            gst_caps_set_simple(m_inputCaps.get(), "rate", G_TYPE_INT, config.sampleRate, nullptr);
++        if (config.numberOfChannels)
++            gst_caps_set_simple(m_inputCaps.get(), "channels", G_TYPE_INT, config.numberOfChannels, nullptr);
++        parser = "ac3parse"_s;
+     } else
+         return;
+ 
+diff -uprN a/Source/WebCore/platform/graphics/gstreamer/VideoDecoderGStreamer.cpp b/Source/WebCore/platform/graphics/gstreamer/VideoDecoderGStreamer.cpp
+--- a/Source/WebCore/platform/graphics/gstreamer/VideoDecoderGStreamer.cpp	2026-10-22 13:54:12.854839300 +0100
++++ b/Source/WebCore/platform/graphics/gstreamer/VideoDecoderGStreamer.cpp	2026-11-04 15:11:50.374896737 +0000
+@@ -195,8 +195,9 @@ GStreamerInternalVideoDecoder::GStreamer
+ 
+     auto* factory = gst_element_get_factory(element.get());
+     ASCIILiteral parser;
+-    if (codecName.startsWith("avc1"_s)) {
+-        m_inputCaps = adoptGRef(gst_caps_new_simple("video/x-h264", "stream-format", G_TYPE_STRING, "avc", "alignment", G_TYPE_STRING, "au", nullptr));
++    if (codecName.startsWith("avc1"_s) || codecName.startsWith("avc3"_s)) {
++        const char* streamFormat = codecName.startsWith("avc3"_s) ? "byte-stream" : "avc";
++        m_inputCaps = adoptGRef(gst_caps_new_simple("video/x-h264", "stream-format", G_TYPE_STRING, streamFormat, "alignment", G_TYPE_STRING, "au", nullptr));
+         if (auto codecData = wrapSpanData(config.description))
+             gst_caps_set_simple(m_inputCaps.get(), "codec_data", GST_TYPE_BUFFER, codecData.get(), nullptr);
+         if (!gst_element_factory_can_sink_all_caps(factory, m_inputCaps.get()))
